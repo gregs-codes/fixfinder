@@ -5,12 +5,12 @@ import { useSupabase } from "@/lib/supabase-provider"
 
 export default function TypingIndicator({ chatId, currentUserId, otherParticipantName }) {
   const { supabase } = useSupabase()
-  const [isTyping, setIsTyping] = useState(false)
+  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false)
 
   useEffect(() => {
-    // Subscribe to typing status changes
+    // Set up real-time listener for typing status updates
     const channel = supabase
-      .channel(`typing-${chatId}`)
+      .channel(`typing:${chatId}`)
       .on(
         "postgres_changes",
         {
@@ -20,9 +20,9 @@ export default function TypingIndicator({ chatId, currentUserId, otherParticipan
           filter: `chat_id=eq.${chatId}`,
         },
         (payload) => {
-          // Only show typing indicator for the other user
+          // Only update if it's the other user typing
           if (payload.new && payload.new.user_id !== currentUserId) {
-            setIsTyping(payload.new.is_typing)
+            setIsOtherUserTyping(payload.new.is_typing)
           }
         },
       )
@@ -31,37 +31,33 @@ export default function TypingIndicator({ chatId, currentUserId, otherParticipan
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [supabase, chatId, currentUserId])
+  }, [chatId, currentUserId, supabase])
 
-  // Update typing status when user types
-  const updateTypingStatus = (isTyping) => {
-    supabase
-      .from("chat_participants")
-      .update({ is_typing: isTyping })
-      .eq("chat_id", chatId)
-      .eq("user_id", currentUserId)
-      .then(({ error }) => {
-        if (error) console.error("Error updating typing status:", error)
-      })
-  }
-
-  // Expose the updateTypingStatus function to parent components
+  // Make the updateTypingStatus function available globally
   useEffect(() => {
-    // Add the function to the window object so ChatInput can access it
-    window.updateTypingStatus = updateTypingStatus
+    window.updateTypingStatus = async (isTyping) => {
+      try {
+        await supabase
+          .from("chat_participants")
+          .update({ is_typing: isTyping })
+          .eq("chat_id", chatId)
+          .eq("user_id", currentUserId)
+      } catch (error) {
+        console.error("Error updating typing status:", error)
+      }
+    }
 
     return () => {
-      // Clean up
       delete window.updateTypingStatus
     }
-  }, [])
+  }, [chatId, currentUserId, supabase])
 
-  if (!isTyping) return null
+  if (!isOtherUserTyping) return null
 
   return (
-    <div className="px-4 py-2 text-xs text-slate-500">
+    <div className="px-4 py-2 text-xs text-slate-500 italic">
       <div className="flex items-center">
-        <span className="mr-2">{otherParticipantName || "Someone"} is typing</span>
+        <span className="mr-2">{otherParticipantName || "User"} is typing</span>
         <span className="flex">
           <span className="animate-bounce mx-0.5 delay-0">.</span>
           <span className="animate-bounce mx-0.5 delay-150">.</span>

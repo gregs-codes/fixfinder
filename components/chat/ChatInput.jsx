@@ -1,53 +1,59 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Send } from "lucide-react"
 import { useSupabase } from "@/lib/supabase-provider"
-import { useRouter } from "next/navigation"
 
 export default function ChatInput({ chatId, userId }) {
   const [message, setMessage] = useState("")
   const [isSending, setIsSending] = useState(false)
   const { supabase } = useSupabase()
-  const router = useRouter()
-  const textareaRef = useRef(null)
+  const inputRef = useRef(null)
   const typingTimeoutRef = useRef(null)
 
-  // Auto-resize textarea as user types
+  // Focus input on mount
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
-    }
-  }, [message])
+    inputRef.current?.focus()
+  }, [])
 
+  // Handle typing indicator
   const handleTyping = () => {
-    // Clear any existing timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current)
-    }
-
-    // Set typing status to true
+    // Only update if the global function exists
     if (window.updateTypingStatus) {
+      // Set typing to true
       window.updateTypingStatus(true)
-    }
 
-    // Set a timeout to clear typing status after 2 seconds of inactivity
-    typingTimeoutRef.current = setTimeout(() => {
+      // Clear previous timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+
+      // Set timeout to clear typing status after 2 seconds of inactivity
+      typingTimeoutRef.current = setTimeout(() => {
+        window.updateTypingStatus(false)
+      }, 2000)
+    }
+  }
+
+  // Clear typing status on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
       if (window.updateTypingStatus) {
         window.updateTypingStatus(false)
       }
-    }, 2000)
-  }
+    }
+  }, [])
 
-  const handleSendMessage = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
 
-    if (!message.trim() || isSending) return
-
-    setIsSending(true)
+    if (!message.trim()) return
 
     try {
+      setIsSending(true)
+
       // Clear typing status when sending a message
       if (window.updateTypingStatus) {
         window.updateTypingStatus(false)
@@ -65,48 +71,34 @@ export default function ChatInput({ chatId, userId }) {
 
       // Clear the input
       setMessage("")
-
-      // Refresh the page to show the new message
-      router.refresh()
     } catch (error) {
       console.error("Error sending message:", error)
       alert("Failed to send message. Please try again.")
     } finally {
       setIsSending(false)
-    }
-  }
-
-  const handleKeyDown = (e) => {
-    // Send message on Enter (without Shift)
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSendMessage(e)
+      inputRef.current?.focus()
     }
   }
 
   return (
-    <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-200">
-      <div className="flex items-end gap-2">
-        <div className="flex-grow relative">
-          <textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => {
-              setMessage(e.target.value)
-              handleTyping()
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
-            className="w-full p-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none max-h-32"
-            rows={1}
-          />
-        </div>
+    <form onSubmit={handleSubmit} className="p-4 border-t border-slate-200">
+      <div className="flex items-center">
+        <input
+          ref={inputRef}
+          type="text"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={handleTyping}
+          placeholder="Type a message..."
+          className="flex-1 px-4 py-2 border border-slate-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+          disabled={isSending}
+        />
         <button
           type="submit"
-          disabled={!message.trim() || isSending}
-          className="p-3 rounded-lg bg-teal-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-teal-500 text-white px-4 py-2 rounded-r-lg hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
+          disabled={isSending || !message.trim()}
         >
-          <Send className="h-5 w-5" />
+          {isSending ? "Sending..." : "Send"}
         </button>
       </div>
     </form>

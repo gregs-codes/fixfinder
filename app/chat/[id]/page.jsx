@@ -18,30 +18,66 @@ export default async function ChatRoom({ params }) {
     redirect("/auth/login")
   }
 
-  try {
-    // Check if user is a participant in this chat with a direct query
-    const { data: participant, error: participantError } = await supabase
-      .from("chat_participants")
-      .select("id")
-      .eq("chat_id", params.id)
-      .eq("user_id", session.user.id)
-      .single()
+  // Special case for /chat/new - redirect to the new chat page
+  if (params.id === "new") {
+    redirect("/chat/new-conversation")
+  }
 
-    if (participantError || !participant) {
+  try {
+    // Check if the chat ID is valid
+    const chatId = Number.parseInt(params.id)
+    if (isNaN(chatId)) {
+      console.error("Invalid chat ID:", params.id)
       notFound()
     }
 
-    // Get the other participant with our stored procedure
-    const { data: otherParticipant, error: otherParticipantError } = await supabase
-      .rpc("get_other_chat_participant", {
-        p_chat_id: Number.parseInt(params.id),
-        p_user_id: session.user.id,
-      })
-      .single()
+    // First check if the chat exists
+    const { data: chat, error: chatError } = await supabase.from("chats").select("id").eq("id", chatId).single()
+
+    if (chatError || !chat) {
+      console.error("Chat not found:", chatError)
+      notFound()
+    }
+
+    // Check if user is a participant using a direct query
+    const { data: participants, error: participantError } = await supabase
+      .from("chat_participants")
+      .select("id")
+      .eq("chat_id", chatId)
+      .eq("user_id", session.user.id)
+
+    if (participantError) {
+      console.error("Error checking participant:", participantError)
+      notFound()
+    }
+
+    // If no participants found, user is not a participant
+    if (!participants || participants.length === 0) {
+      console.error("User is not a participant in this chat")
+      notFound()
+    }
+
+    // Get the other participant with a direct query
+    const { data: otherParticipants, error: otherParticipantError } = await supabase
+      .from("chat_participants")
+      .select(`
+        user_id,
+        users:user_id(
+          id,
+          full_name,
+          avatar_url,
+          is_provider
+        )
+      `)
+      .eq("chat_id", chatId)
+      .neq("user_id", session.user.id)
 
     if (otherParticipantError) {
       console.error("Error fetching other participant:", otherParticipantError)
     }
+
+    // Get the first other participant
+    const otherParticipant = otherParticipants && otherParticipants.length > 0 ? otherParticipants[0].users : null
 
     // Fetch messages with reactions
     const { data: messages, error: messagesError } = await supabase
@@ -63,7 +99,7 @@ export default async function ChatRoom({ params }) {
           )
         )
       `)
-      .eq("chat_id", params.id)
+      .eq("chat_id", chatId)
       .order("created_at", { ascending: true })
 
     if (messagesError) {
@@ -74,7 +110,7 @@ export default async function ChatRoom({ params }) {
     await supabase
       .from("messages")
       .update({ is_read: true })
-      .eq("chat_id", params.id)
+      .eq("chat_id", chatId)
       .neq("sender_id", session.user.id)
       .eq("is_read", false)
 
@@ -105,13 +141,13 @@ export default async function ChatRoom({ params }) {
 
           {/* Typing indicator */}
           <TypingIndicator
-            chatId={params.id}
+            chatId={chatId}
             currentUserId={session.user.id}
             otherParticipantName={otherParticipant?.full_name}
           />
 
           {/* Chat input */}
-          <ChatInput chatId={params.id} userId={session.user.id} />
+          <ChatInput chatId={chatId} userId={session.user.id} />
         </div>
       </div>
     )
