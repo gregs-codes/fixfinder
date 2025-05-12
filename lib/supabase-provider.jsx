@@ -1,17 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-
-// Create a single instance of the Supabase client
-let supabaseInstance = null
-
-const getSupabaseClient = () => {
-  if (!supabaseInstance) {
-    supabaseInstance = createClientComponentClient()
-  }
-  return supabaseInstance
-}
+import { getSupabaseClient } from "./supabase-singleton"
 
 const Context = createContext(undefined)
 
@@ -22,10 +12,12 @@ export function SupabaseProvider({ children }) {
   const [userDetails, setUserDetails] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [authChangeComplete, setAuthChangeComplete] = useState(false)
 
   useEffect(() => {
     const getUser = async () => {
       try {
+        setLoading(true)
         const {
           data: { session },
           error: sessionError,
@@ -35,6 +27,7 @@ export function SupabaseProvider({ children }) {
           console.error("Error getting session:", sessionError)
           setError(sessionError)
           setLoading(false)
+          setAuthChangeComplete(true)
           return
         }
 
@@ -61,10 +54,12 @@ export function SupabaseProvider({ children }) {
         }
 
         setLoading(false)
+        setAuthChangeComplete(true)
       } catch (err) {
         console.error("Error in getUser:", err)
         setError(err)
         setLoading(false)
+        setAuthChangeComplete(true)
       }
     }
 
@@ -74,6 +69,7 @@ export function SupabaseProvider({ children }) {
       const {
         data: { subscription },
       } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log("Auth state changed:", event, session?.user?.email)
         setUser(session?.user || null)
 
         if (session?.user) {
@@ -99,6 +95,7 @@ export function SupabaseProvider({ children }) {
         }
 
         setLoading(false)
+        setAuthChangeComplete(true)
       })
 
       return () => {
@@ -108,10 +105,24 @@ export function SupabaseProvider({ children }) {
       console.error("Error setting up auth state change listener:", err)
       setError(err)
       setLoading(false)
+      setAuthChangeComplete(true)
     }
   }, [supabase])
 
-  return <Context.Provider value={{ supabase, user, userDetails, loading, error }}>{children}</Context.Provider>
+  return (
+    <Context.Provider
+      value={{
+        supabase,
+        user,
+        userDetails,
+        loading,
+        error,
+        authChangeComplete,
+      }}
+    >
+      {children}
+    </Context.Provider>
+  )
 }
 
 export function useSupabase() {

@@ -1,15 +1,23 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useSupabase } from "@/lib/supabase-provider"
 import { Menu, X, User, LogOut } from "lucide-react"
 
 export default function Navbar() {
-  const { user, userDetails, supabase, loading, error } = useSupabase()
+  const { user, userDetails, supabase, loading, error, authChangeComplete } = useSupabase()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [localLoading, setLocalLoading] = useState(true)
   const pathname = usePathname()
+
+  useEffect(() => {
+    // Only set localLoading to false when authChangeComplete is true
+    if (authChangeComplete) {
+      setLocalLoading(false)
+    }
+  }, [authChangeComplete])
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen)
@@ -17,9 +25,12 @@ export default function Navbar() {
 
   const handleSignOut = async () => {
     try {
+      setLocalLoading(true)
       await supabase.auth.signOut()
+      // The auth state change listener will handle updating the UI
     } catch (error) {
       console.error("Error signing out:", error)
+      setLocalLoading(false)
     }
   }
 
@@ -46,7 +57,12 @@ export default function Navbar() {
             <Link href="/projects" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive("/projects")}`}>
               Projects
             </Link>
-            {!loading && user ? (
+            {localLoading ? (
+              <div className="flex items-center space-x-3">
+                <div className="h-8 w-24 bg-slate-200 animate-pulse rounded-md"></div>
+                <div className="h-8 w-8 bg-slate-200 animate-pulse rounded-full"></div>
+              </div>
+            ) : user ? (
               <>
                 <Link
                   href="/dashboard"
@@ -127,7 +143,11 @@ export default function Navbar() {
             >
               Projects
             </Link>
-            {!loading && user ? (
+            {localLoading ? (
+              <div className="px-3 py-2">
+                <div className="h-8 w-24 bg-slate-200 animate-pulse rounded-md"></div>
+              </div>
+            ) : user ? (
               <>
                 <Link
                   href="/dashboard"

@@ -3,11 +3,11 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useSupabase } from "@/lib/supabase-provider"
 import { useToast } from "@/components/ui/toast-provider"
+import { getSupabaseClient } from "@/lib/supabase-singleton"
 
 export default function Register() {
-  const { supabase, error: supabaseError } = useSupabase()
+  const supabase = getSupabaseClient()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { addToast } = useToast()
@@ -19,6 +19,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [verificationSent, setVerificationSent] = useState(false)
+  const [supabaseError, setSupabaseError] = useState(null) // Added supabaseError state
 
   useEffect(() => {
     // Check if provider param is set to true
