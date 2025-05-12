@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { useToast } from "@/components/ui/toast-provider"
 import { getSupabaseClient } from "@/lib/supabase-singleton"
 
 export default function Login() {
@@ -14,7 +13,6 @@ export default function Login() {
   const [needsVerification, setNeedsVerification] = useState(false)
   const router = useRouter()
   const supabase = getSupabaseClient()
-  const { toast } = useToast()
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -44,14 +42,13 @@ export default function Login() {
       }
 
       // Success - redirect to dashboard
-      toast({
-        title: "Login successful",
-        description: "Welcome back!",
-        variant: "success",
-      })
+      console.log("Login successful, redirecting to dashboard")
 
-      router.push("/dashboard")
-      router.refresh()
+      // Use a slight delay to ensure auth state is updated
+      setTimeout(() => {
+        router.push("/dashboard")
+        router.refresh()
+      }, 500)
     } catch (err) {
       console.error("Error in login process:", err)
       setError("An unexpected error occurred. Please try again.")
@@ -70,11 +67,7 @@ export default function Login() {
       if (error) {
         setError(error.message)
       } else {
-        toast({
-          title: "Verification email sent",
-          description: "Please check your inbox and follow the link to verify your email.",
-          variant: "success",
-        })
+        setError("Verification email sent. Please check your inbox.")
         setNeedsVerification(false)
       }
     } catch (err) {
@@ -104,14 +97,13 @@ export default function Login() {
         return
       }
 
-      toast({
-        title: "Demo login successful",
-        description: `You're now logged in as a demo ${type}.`,
-        variant: "success",
-      })
+      console.log("Demo login successful, redirecting to dashboard")
 
-      router.push("/dashboard")
-      router.refresh()
+      // Use a slight delay to ensure auth state is updated
+      setTimeout(() => {
+        router.push("/dashboard")
+        router.refresh()
+      }, 500)
     } catch (err) {
       setError("An unexpected error occurred. Please try again.")
       setLoading(false)

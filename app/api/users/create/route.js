@@ -6,7 +6,7 @@ import { NextResponse } from "next/server"
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export async function POST(request) {
-  let requestData = null // Declare requestData here
+  let requestData = null
   try {
     requestData = await request.json()
     const { user_id, email, full_name, is_provider } = requestData
@@ -15,10 +15,12 @@ export async function POST(request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    // Create a Supabase client with server-side privileges
+    console.log("Creating user:", user_id, email)
+
+    // Create a Supabase client
     const supabase = createRouteHandlerClient({ cookies })
 
-    // Create a fallback user object that will be used if database operations fail
+    // Create a fallback user object
     const fallbackUser = {
       id: user_id,
       email,
@@ -30,29 +32,26 @@ export async function POST(request) {
       _isFallback: true,
     }
 
+    // Check again if the user exists (double-check)
+    const { data: existingUser, error: checkError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", user_id)
+      .maybeSingle()
+
+    if (checkError) {
+      console.error("Error checking for existing user:", checkError)
+    } else if (existingUser) {
+      console.log("User already exists, returning existing user")
+      return NextResponse.json({ success: true, data: existingUser })
+    }
+
     // Try to create the user with retries for rate limiting
     let retries = 3
     let lastError = null
 
     while (retries > 0) {
       try {
-        // First check if the user already exists
-        const { data: existingUser, error: checkError } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", user_id)
-          .maybeSingle()
-
-        if (checkError) {
-          console.error("Error checking for existing user:", checkError)
-          throw checkError
-        }
-
-        // If user exists, return it
-        if (existingUser) {
-          return NextResponse.json({ success: true, data: existingUser })
-        }
-
         // Try to insert the user
         const { data, error } = await supabase
           .from("users")
@@ -81,13 +80,18 @@ export async function POST(request) {
           throw error
         }
 
+        console.log("User created successfully:", data.id)
         return NextResponse.json({ success: true, data })
       } catch (error) {
         lastError = error
         console.error(`Attempt ${4 - retries}/3 failed:`, error)
 
         // If it's a rate limit error, wait and retry
-        if (error.message?.includes("Too Many Requests") || error.status === 429) {
+        if (
+          error.message?.includes("Too Many Requests") ||
+          error.status === 429 ||
+          (typeof error.message === "string" && error.message.includes("Too Many R"))
+        ) {
           retries--
           if (retries > 0) {
             // Exponential backoff: 1s, 2s, 4s

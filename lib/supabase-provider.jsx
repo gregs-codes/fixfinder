@@ -5,8 +5,10 @@ import { getSupabaseClient } from "./supabase-singleton"
 
 const Context = createContext(undefined)
 
+// Cache for user profiles to reduce API calls
+const userProfileCache = new Map()
+
 export function SupabaseProvider({ children }) {
-  // Use the singleton instance
   const [supabase] = useState(() => getSupabaseClient())
   const [user, setUser] = useState(null)
   const [userDetails, setUserDetails] = useState(null)
@@ -16,54 +18,132 @@ export function SupabaseProvider({ children }) {
 
   const fetchUserProfile = async (userId) => {
     try {
-      // First check if the user exists in the database
-      const { data, error: profileError } = await supabase.from("users").select("*").eq("id", userId).maybeSingle() // Use maybeSingle instead of single to avoid errors when no rows are returned
+      // Check cache first
+      if (userProfileCache.has(userId)) {
+        console.log("Using cached user profile")
+        return userProfileCache.get(userId)
+      }
 
-      if (profileError) {
-        console.error("Error fetching user profile:", profileError)
-        setError(profileError)
+      console.log("Fetching user profile for:", userId)
+
+      // First try to get the user with the service role key if available
+      // This bypasses RLS policies
+      let userData = null
+
+      try {
+        // Try to get user with normal client (subject to RLS)
+        const { data, error: profileError } = await supabase.from("users").select("*").eq("id", userId).maybeSingle()
+
+        if (profileError) {
+          console.warn("Error fetching user with client:", profileError)
+          // We'll continue and try the API route
+        } else if (data) {
+          console.log("Found user in database:", data.id)
+          userData = data
+        }
+      } catch (err) {
+        console.warn("Error in client user fetch:", err)
+        // Continue to API route
+      }
+
+      // If we found the user, cache and return
+      if (userData) {
+        userProfileCache.set(userId, userData)
+        return userData
+      }
+
+      // If we couldn't find the user with the client, try the API route
+      // which can use the service role key
+      console.log("User not found with client, trying API route")
+
+      // Get auth user for metadata
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser()
+
+      if (!authUser) {
+        console.error("No authenticated user found")
         return null
       }
 
-      // If user doesn't exist in the database, create a new user record
-      if (!data) {
-        console.log("User not found in database, creating new user record")
-
-        // Get user metadata from auth
-        const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser()
-
-        if (!authUser) {
-          console.error("No authenticated user found")
-          return null
-        }
-
-        // Create default user record
-        const newUser = {
-          id: userId,
-          email: authUser.email,
-          full_name: authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "New User",
-          is_provider: authUser.user_metadata?.is_provider || false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-
-        const { data: insertedUser, error: insertError } = await supabase
-          .from("users")
-          .insert([newUser])
-          .select()
-          .single()
-
-        if (insertError) {
-          console.error("Error creating user record:", insertError)
-          return newUser // Return the new user object even if insert failed
-        }
-
-        return insertedUser || newUser
+      // Create a fallback user object in case API fails
+      const fallbackUser = {
+        id: userId,
+        email: authUser.email,
+        full_name: authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "New User",
+        is_provider: authUser.user_metadata?.is_provider || false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        _isFallback: true,
       }
 
-      return data
+      try {
+        // First check if user exists via API
+        const checkResponse = await fetch(`/api/users/check?userId=${userId}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        })
+
+        let checkResult
+        try {
+          checkResult = await checkResponse.json()
+        } catch (jsonError) {
+          console.error("Error parsing check response:", jsonError)
+          userProfileCache.set(userId, fallbackUser)
+          return fallbackUser
+        }
+
+        // If user exists, return it
+        if (checkResult.exists && checkResult.data) {
+          console.log("User found via API check:", checkResult.data.id)
+          userProfileCache.set(userId, checkResult.data)
+          return checkResult.data
+        }
+
+        // If user doesn't exist, create it
+        console.log("User not found, creating via API")
+        const createResponse = await fetch("/api/users/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: userId,
+            email: authUser.email,
+            full_name: authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "New User",
+            is_provider: authUser.user_metadata?.is_provider || false,
+          }),
+        })
+
+        let createResult
+        try {
+          createResult = await createResponse.json()
+        } catch (jsonError) {
+          console.error("Error parsing create response:", jsonError)
+          userProfileCache.set(userId, fallbackUser)
+          return fallbackUser
+        }
+
+        if (createResult.success && createResult.data) {
+          console.log("User created successfully:", createResult.data.id)
+          userProfileCache.set(userId, createResult.data)
+          return createResult.data
+        }
+
+        // If creation failed but we have fallback data
+        if (createResult.fallbackData) {
+          console.log("Using fallback data from API")
+          userProfileCache.set(userId, createResult.fallbackData)
+          return createResult.fallbackData
+        }
+
+        // Last resort fallback
+        console.log("Using local fallback user")
+        userProfileCache.set(userId, fallbackUser)
+        return fallbackUser
+      } catch (err) {
+        console.error("Error in API operations:", err)
+        userProfileCache.set(userId, fallbackUser)
+        return fallbackUser
+      }
     } catch (err) {
       console.error("Error in profile fetch:", err)
       setError(err)

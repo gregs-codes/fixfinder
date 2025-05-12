@@ -4,23 +4,15 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useSupabase } from "@/lib/supabase-provider"
-import { Menu, X, User, LogOut, ChevronDown, Settings, Briefcase, LayoutDashboard } from "lucide-react"
+import { Menu, X, User, LogOut, ChevronDown, Settings, Briefcase, LayoutDashboard, MessageSquare } from "lucide-react"
 
 export default function Navbar() {
-  const { user, userDetails, supabase, loading, error, authChangeComplete } = useSupabase()
+  const { user, userDetails, supabase, loading } = useSupabase()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
-  const [localLoading, setLocalLoading] = useState(true)
   const pathname = usePathname()
   const router = useRouter()
   const userMenuRef = useRef(null)
-
-  useEffect(() => {
-    // Only set localLoading to false when authChangeComplete is true
-    if (authChangeComplete) {
-      setLocalLoading(false)
-    }
-  }, [authChangeComplete])
 
   useEffect(() => {
     // Close the user menu when clicking outside
@@ -46,13 +38,11 @@ export default function Navbar() {
 
   const handleSignOut = async () => {
     try {
-      setLocalLoading(true)
       await supabase.auth.signOut()
+      router.push("/")
       router.refresh()
-      // The auth state change listener will handle updating the UI
     } catch (error) {
       console.error("Error signing out:", error)
-      setLocalLoading(false)
     }
   }
 
@@ -87,20 +77,35 @@ export default function Navbar() {
               Find Help
             </Link>
 
-            {localLoading ? (
+            {loading ? (
               <div className="flex items-center space-x-3">
                 <div className="h-8 w-24 bg-slate-200 animate-pulse rounded-md"></div>
                 <div className="h-8 w-8 bg-slate-200 animate-pulse rounded-full"></div>
               </div>
             ) : user ? (
               <>
+                <Link
+                  href="/dashboard"
+                  className={`px-3 py-2 rounded-md text-sm font-medium ${isActive("/dashboard")}`}
+                >
+                  Dashboard
+                </Link>
+
                 <div className="relative" ref={userMenuRef}>
                   <button
                     onClick={toggleUserMenu}
                     className="flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-teal-600 hover:bg-slate-50"
                   >
                     <div className="h-8 w-8 rounded-full bg-teal-500 flex items-center justify-center text-white">
-                      <User className="h-5 w-5" />
+                      {userDetails?.avatar_url ? (
+                        <img
+                          src={userDetails.avatar_url || "/placeholder.svg"}
+                          alt={getUserName()}
+                          className="h-8 w-8 rounded-full object-cover"
+                        />
+                      ) : (
+                        <User className="h-5 w-5" />
+                      )}
                     </div>
                     <span>{getUserName()}</span>
                     <ChevronDown className="h-4 w-4" />
@@ -129,22 +134,11 @@ export default function Navbar() {
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
                         onClick={() => setIsUserMenuOpen(false)}
                       >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4 mr-2"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                        </svg>
+                        <MessageSquare className="h-4 w-4 mr-2" />
                         Messages
                       </Link>
                       <Link
-                        href={`/profile/${user.id.substring(0, 8)}`}
+                        href="/profile/edit"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
                         onClick={() => setIsUserMenuOpen(false)}
                       >
@@ -210,7 +204,7 @@ export default function Navbar() {
               Find Help
             </Link>
 
-            {localLoading ? (
+            {loading ? (
               <div className="px-3 py-2">
                 <div className="h-8 w-24 bg-slate-200 animate-pulse rounded-md"></div>
               </div>
@@ -237,23 +231,12 @@ export default function Navbar() {
                   className={`block px-3 py-2 rounded-md text-base font-medium ${isActive("/chat")}`}
                   onClick={toggleMenu}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4 inline mr-2"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                  </svg>
+                  <MessageSquare className="h-4 w-4 inline mr-2" />
                   Messages
                 </Link>
                 <Link
-                  href={user ? `/profile/${user.id.substring(0, 8)}` : "/profile"}
-                  className={`block px-3 py-2 rounded-md text-base font-medium ${isActive("/profile")}`}
+                  href="/profile/edit"
+                  className={`block px-3 py-2 rounded-md text-base font-medium ${isActive("/profile/edit")}`}
                   onClick={toggleMenu}
                 >
                   <Settings className="h-4 w-4 inline mr-2" />
