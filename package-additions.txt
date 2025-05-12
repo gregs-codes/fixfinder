@@ -1,0 +1,3 @@
+npm install @tanstack/react-query @tanstack/react-query-devtools
+# or
+yarn add @tanstack/react-query @tanstack/react-query-devtools

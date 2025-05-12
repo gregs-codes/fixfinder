@@ -1,77 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { useSupabase } from "@/lib/supabase-provider"
-import { useToast } from "@/components/ui/toast-provider"
 import { User, Check, X } from "lucide-react"
 
-export default function BidsList({ bids, projectId }) {
-  const { supabase } = useSupabase()
-  const router = useRouter()
-  const { addToast } = useToast()
-  const [processing, setProcessing] = useState(false)
-
-  const handleAcceptBid = async (bidId, providerId) => {
-    setProcessing(true)
-
-    try {
-      // Update the bid status
-      const { error: bidError } = await supabase.from("project_bids").update({ status: "accepted" }).eq("id", bidId)
-
-      if (bidError) {
-        throw bidError
-      }
-
-      // Update the project status
-      const { error: projectError } = await supabase
-        .from("projects")
-        .update({ status: "in_progress" })
-        .eq("id", projectId)
-
-      if (projectError) {
-        throw projectError
-      }
-
-      // Reject all other bids
-      const { error: rejectError } = await supabase
-        .from("project_bids")
-        .update({ status: "rejected" })
-        .eq("project_id", projectId)
-        .neq("id", bidId)
-
-      if (rejectError) {
-        throw rejectError
-      }
-
-      addToast("Bid accepted successfully!", "success")
-      router.refresh()
-    } catch (error) {
-      addToast(error.message || "Failed to accept bid", "error")
-    } finally {
-      setProcessing(false)
-    }
-  }
-
-  const handleRejectBid = async (bidId) => {
-    setProcessing(true)
-
-    try {
-      const { error } = await supabase.from("project_bids").update({ status: "rejected" }).eq("id", bidId)
-
-      if (error) {
-        throw error
-      }
-
-      addToast("Bid rejected", "success")
-      router.refresh()
-    } catch (error) {
-      addToast(error.message || "Failed to reject bid", "error")
-    } finally {
-      setProcessing(false)
-    }
-  }
-
+export default function BidsList({ bids, projectId, onAcceptBid, onRejectBid, isUpdating }) {
   // Sort bids: pending first, then accepted, then rejected
   const sortedBids = [...bids].sort((a, b) => {
     const statusOrder = { pending: 0, accepted: 1, rejected: 2 }
@@ -137,16 +68,16 @@ export default function BidsList({ bids, projectId }) {
               {bid.status === "pending" && (
                 <div className="mt-4 flex justify-end space-x-2">
                   <button
-                    onClick={() => handleRejectBid(bid.id)}
-                    disabled={processing}
+                    onClick={() => onRejectBid(bid.id)}
+                    disabled={isUpdating}
                     className="flex items-center text-sm text-red-600 hover:text-red-800"
                   >
                     <X className="h-4 w-4 mr-1" />
                     Reject
                   </button>
                   <button
-                    onClick={() => handleAcceptBid(bid.id, bid.provider_id)}
-                    disabled={processing}
+                    onClick={() => onAcceptBid(bid.id, bid.provider_id)}
+                    disabled={isUpdating}
                     className="flex items-center text-sm text-green-600 hover:text-green-800"
                   >
                     <Check className="h-4 w-4 mr-1" />

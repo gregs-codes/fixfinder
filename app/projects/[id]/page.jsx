@@ -1,67 +1,116 @@
-export const dynamic = "force-dynamic"
+"use client"
 
-import { notFound } from "next/navigation"
-import { createServerSupabase } from "@/lib/supabase-server"
+import { useParams } from "next/navigation"
+import { useSupabase } from "@/lib/supabase-provider"
+import { useProject } from "@/hooks/use-projects"
+import { useBids } from "@/hooks/use-bids"
 import ProjectDetails from "@/components/projects/ProjectDetails"
 import BidForm from "@/components/projects/BidForm"
 import BidsList from "@/components/projects/BidsList"
 
-export default async function ProjectPage({ params }) {
-  const supabase = createServerSupabase()
+export default function ProjectPage() {
+  const params = useParams()
+  const projectId = params.id
+  const { user, userDetails } = useSupabase()
 
-  // Get the current user
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  const userId = session?.user?.id
+  // Fetch project data using React Query
+  const { project, isLoading, isError, error, updateProjectStatus, isUpdatingProject } = useProject(projectId)
 
-  // Fetch project details
-  const { data: project, error } = await supabase
-    .from("projects")
-    .select(`
-      *,
-      category:categories(*),
-      client:users!projects_client_id_fkey(id, full_name, avatar_url, email, phone, location),
-      bids:project_bids(
-        *,
-        provider:users(id, full_name, avatar_url)
-      )
-    `)
-    .eq("id", params.id)
-    .single()
-
-  if (error || !project) {
-    notFound()
-  }
-
-  // Get user details if logged in
-  let userDetails = null
-  if (userId) {
-    const { data } = await supabase.from("users").select("*").eq("id", userId).single()
-
-    userDetails = data
-  }
+  // Get bid mutations
+  const { addBid, isAddingBid, updateBidStatus, isUpdatingBid } = useBids()
 
   // Check if user is the client
-  const isClient = userId === project.client_id
+  const isClient = user?.id === project?.client_id
 
   // Check if user is a provider who has already bid
-  const hasUserBid = project.bids?.some((bid) => bid.provider_id === userId)
+  const hasUserBid = project?.bids?.some((bid) => bid.provider_id === user?.id)
 
   // Check if user is a provider
   const isProvider = userDetails?.is_provider || false
+
+  if (isLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="animate-pulse space-y-8">
+          <div className="h-12 bg-slate-200 rounded w-1/3"></div>
+          <div className="h-64 bg-slate-200 rounded"></div>
+          <div className="h-48 bg-slate-200 rounded"></div>
+        </div>
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+          <p>Error loading project: {error?.message || "Project not found"}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!project) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-white rounded-xl shadow-md p-8 text-center">
+          <h2 className="text-2xl font-bold mb-4">Project Not Found</h2>
+          <p className="text-slate-600">The project you're looking for doesn't exist or has been removed.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Project details */}
         <div className="lg:col-span-2">
-          <ProjectDetails project={project} isClient={isClient} userId={userId} />
+          <ProjectDetails
+            project={project}
+            isClient={isClient}
+            userId={user?.id}
+            onStatusChange={(newStatus) => updateProjectStatus({ status: newStatus })}
+            isUpdating={isUpdatingProject}
+          />
 
           {/* Bids list (visible to client only) */}
           {isClient && project.bids?.length > 0 && (
             <div className="mt-8">
-              <BidsList bids={project.bids} projectId={project.id} />
+              <BidsList
+                bids={project.bids}
+                projectId={project.id}
+                onAcceptBid={(bidId, providerId) => {
+                  // Update bid status
+                  updateBidStatus({
+                    bidId,
+                    updates: { status: "accepted" },
+                  })
+
+                  // Update project status
+                  updateProjectStatus({
+                    status: "in_progress",
+                    provider_id: providerId,
+                  })
+
+                  // Reject all other bids
+                  project.bids
+                    .filter((bid) => bid.id !== bidId)
+                    .forEach((bid) => {
+                      updateBidStatus({
+                        bidId: bid.id,
+                        updates: { status: "rejected" },
+                      })
+                    })
+                }}
+                onRejectBid={(bidId) => {
+                  updateBidStatus({
+                    bidId,
+                    updates: { status: "rejected" },
+                  })
+                }}
+                isUpdating={isUpdatingBid}
+              />
             </div>
           )}
         </div>
@@ -69,8 +118,19 @@ export default async function ProjectPage({ params }) {
         {/* Sidebar */}
         <div className="lg:col-span-1">
           {/* Bid form (for providers who haven't bid yet) */}
-          {userId && isProvider && !isClient && !hasUserBid && project.status === "open" && (
-            <BidForm projectId={project.id} userId={userId} />
+          {user && isProvider && !isClient && !hasUserBid && project.status === "open" && (
+            <BidForm
+              projectId={project.id}
+              userId={user.id}
+              onSubmit={(bidData) => {
+                addBid({
+                  project_id: project.id,
+                  provider_id: user.id,
+                  ...bidData,
+                })
+              }}
+              isSubmitting={isAddingBid}
+            />
           )}
 
           {/* Client info card */}
@@ -101,7 +161,7 @@ export default async function ProjectPage({ params }) {
               {project.client?.location && <p className="text-sm text-slate-600 mb-2">📍 {project.client.location}</p>}
 
               {/* Contact button (visible to providers only) */}
-              {userId && isProvider && !isClient && (
+              {user && isProvider && !isClient && (
                 <div className="mt-4">
                   <a href={`/chat/new?client=${project.client_id}`} className="btn-primary w-full block text-center">
                     Contact Client

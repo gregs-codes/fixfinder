@@ -2,17 +2,14 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useSupabase } from "@/lib/supabase-provider"
 import { useToast } from "@/components/ui/toast-provider"
 
-export default function BidForm({ projectId, userId }) {
-  const { supabase } = useSupabase()
+export default function BidForm({ projectId, userId, onSubmit, isSubmitting }) {
   const router = useRouter()
   const { addToast } = useToast()
 
   const [bidAmount, setBidAmount] = useState("")
   const [message, setMessage] = useState("")
-  const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -22,27 +19,21 @@ export default function BidForm({ projectId, userId }) {
       return
     }
 
-    setSubmitting(true)
-
     try {
-      const { error } = await supabase.from("project_bids").insert({
-        project_id: projectId,
-        provider_id: userId,
+      await onSubmit({
         bid_amount: Number.parseFloat(bidAmount),
         message,
         status: "pending",
       })
 
-      if (error) {
-        throw error
-      }
-
       addToast("Bid submitted successfully!", "success")
       router.refresh()
+
+      // Reset form
+      setBidAmount("")
+      setMessage("")
     } catch (error) {
       addToast(error.message || "Failed to submit bid", "error")
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -84,8 +75,8 @@ export default function BidForm({ projectId, userId }) {
             />
           </div>
 
-          <button type="submit" className="btn-primary w-full" disabled={submitting}>
-            {submitting ? "Submitting..." : "Submit Bid"}
+          <button type="submit" className="btn-primary w-full" disabled={isSubmitting}>
+            {isSubmitting ? "Submitting..." : "Submit Bid"}
           </button>
         </form>
       </div>

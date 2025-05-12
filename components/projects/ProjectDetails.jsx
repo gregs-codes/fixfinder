@@ -1,36 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { useSupabase } from "@/lib/supabase-provider"
-import { useToast } from "@/components/ui/toast-provider"
 import { Calendar, MapPin, DollarSign } from "lucide-react"
 
-export default function ProjectDetails({ project, isClient, userId }) {
-  const { supabase } = useSupabase()
-  const router = useRouter()
-  const { addToast } = useToast()
-  const [updating, setUpdating] = useState(false)
-
-  const handleStatusChange = async (newStatus) => {
-    if (!isClient) return
-
-    setUpdating(true)
-
-    try {
-      const { error } = await supabase.from("projects").update({ status: newStatus }).eq("id", project.id)
-
-      if (error) {
-        throw error
-      }
-
-      addToast(`Project marked as ${newStatus}`, "success")
-      router.refresh()
-    } catch (error) {
-      addToast(error.message || "Failed to update project status", "error")
-    } finally {
-      setUpdating(false)
-    }
+export default function ProjectDetails({ project, isClient, userId, onStatusChange, isUpdating }) {
+  if (!project) {
+    return null
   }
 
   const statusColors = {
@@ -53,8 +27,8 @@ export default function ProjectDetails({ project, isClient, userId }) {
 
             {isClient && project.status === "open" && (
               <button
-                onClick={() => handleStatusChange("cancelled")}
-                disabled={updating}
+                onClick={() => onStatusChange("cancelled")}
+                disabled={isUpdating}
                 className="ml-2 text-sm text-red-600 hover:text-red-800"
               >
                 Cancel Project
@@ -63,8 +37,8 @@ export default function ProjectDetails({ project, isClient, userId }) {
 
             {isClient && project.status === "in_progress" && (
               <button
-                onClick={() => handleStatusChange("completed")}
-                disabled={updating}
+                onClick={() => onStatusChange("completed")}
+                disabled={isUpdating}
                 className="ml-2 text-sm text-teal-600 hover:text-teal-800"
               >
                 Mark as Completed
