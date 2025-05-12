@@ -1,211 +1,340 @@
-import { createServerSupabase } from "@/lib/supabase-server"
+"use client"
+
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Clock, CheckCircle, XCircle } from "lucide-react"
+import { useSupabase } from "@/lib/supabase-provider"
+import { Briefcase, MessageSquare, Star, Users, ArrowRight, Trash } from "lucide-react"
 
-export default async function ClientDashboard({ userId }) {
-  const supabase = createServerSupabase()
+export default function ClientDashboard({ userId }) {
+  const { supabase } = useSupabase()
+  const [projects, setProjects] = useState([])
+  const [messages, setMessages] = useState([])
+  const [providers, setProviders] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showSampleData, setShowSampleData] = useState(false)
 
-  // Fetch client's projects
-  const { data: projects } = await supabase
-    .from("projects")
-    .select(`
-      *,
-      category:categories(*),
-      bids:project_bids(
-        *,
-        provider:users(id, full_name, avatar_url)
-      )
-    `)
-    .eq("client_id", userId)
-    .order("created_at", { ascending: false })
+  // Sample data for empty states
+  const sampleProjects = [
+    {
+      id: "sample-1",
+      title: "Kitchen Renovation",
+      description: "Complete kitchen remodel including new cabinets, countertops, and appliances",
+      status: "open",
+      created_at: new Date().toISOString(),
+      category: "Home Improvement",
+      isSample: true,
+    },
+    {
+      id: "sample-2",
+      title: "Lawn Maintenance",
+      description: "Weekly lawn mowing and garden maintenance",
+      status: "in_progress",
+      created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+      category: "Landscaping",
+      isSample: true,
+    },
+  ]
 
-  // Fetch unread messages count
-  const { data: chats } = await supabase
-    .from("chat_participants")
-    .select(`
-      chat_id,
-      chats!inner(
-        messages!inner(
-          id,
-          is_read,
-          sender_id
-        )
-      )
-    `)
-    .eq("user_id", userId)
-    .neq("chats.messages.sender_id", userId)
-    .eq("chats.messages.is_read", false)
+  const sampleMessages = [
+    {
+      id: "msg-sample-1",
+      sender_id: "provider-1",
+      sender_name: "John Contractor",
+      content:
+        "Hi there! I'm interested in your kitchen renovation project. When would be a good time to discuss details?",
+      created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      isSample: true,
+    },
+    {
+      id: "msg-sample-2",
+      sender_id: "provider-2",
+      sender_name: "Green Thumb Landscaping",
+      content: "I've reviewed your lawn maintenance request. We can start next week if that works for you.",
+      created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+      isSample: true,
+    },
+  ]
 
-  const unreadMessagesCount =
-    chats?.reduce((count, chat) => {
-      return count + chat.chats.messages.length
-    }, 0) || 0
+  const sampleProviders = [
+    {
+      id: "provider-1",
+      full_name: "John Contractor",
+      rating: 4.8,
+      services: ["Home Improvement", "Renovation"],
+      isSample: true,
+    },
+    {
+      id: "provider-2",
+      full_name: "Green Thumb Landscaping",
+      rating: 4.5,
+      services: ["Landscaping", "Gardening"],
+      isSample: true,
+    },
+  ]
 
-  // Group projects by status
-  const openProjects = projects?.filter((p) => p.status === "open") || []
-  const inProgressProjects = projects?.filter((p) => p.status === "in_progress") || []
-  const completedProjects = projects?.filter((p) => p.status === "completed") || []
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      try {
+        // Fetch projects
+        const { data: projectsData, error: projectsError } = await supabase
+          .from("projects")
+          .select("*")
+          .eq("client_id", userId)
+          .order("created_at", { ascending: false })
 
-  return (
-    <div className="space-y-8">
-      {/* Quick stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <h3 className="font-semibold text-lg mb-2">Open Projects</h3>
-          <div className="flex items-center">
-            <Clock className="h-8 w-8 text-indigo-500 mr-3" />
-            <span className="text-3xl font-bold">{openProjects.length}</span>
-          </div>
-        </div>
+        if (projectsError) {
+          console.error("Error fetching projects:", projectsError)
+        } else {
+          setProjects(projectsData || [])
+        }
 
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <h3 className="font-semibold text-lg mb-2">Active Projects</h3>
-          <div className="flex items-center">
-            <CheckCircle className="h-8 w-8 text-teal-500 mr-3" />
-            <span className="text-3xl font-bold">{inProgressProjects.length}</span>
-          </div>
-        </div>
+        // Fetch messages (most recent conversations)
+        const { data: messagesData, error: messagesError } = await supabase
+          .from("messages")
+          .select("*")
+          .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+          .order("created_at", { ascending: false })
+          .limit(5)
 
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <h3 className="font-semibold text-lg mb-2">Unread Messages</h3>
-          <div className="flex items-center">
-            <div className="relative">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-8 w-8 text-indigo-500 mr-3"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-                />
-              </svg>
-              {unreadMessagesCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                  {unreadMessagesCount}
-                </span>
-              )}
-            </div>
-            <Link href="/chat" className="text-indigo-600 hover:text-indigo-800 font-medium">
-              View Messages
-            </Link>
-          </div>
-        </div>
-      </div>
+        if (messagesError) {
+          console.error("Error fetching messages:", messagesError)
+        } else {
+          setMessages(messagesData || [])
+        }
 
-      {/* Projects section */}
-      <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Your Projects</h2>
-            <Link href="/projects/new" className="btn-primary">
-              Post New Project
-            </Link>
-          </div>
+        // Fetch providers the client has worked with
+        const { data: providersData, error: providersError } = await supabase
+          .from("users")
+          .select("*")
+          .eq("is_provider", true)
+          .in("id", projectsData ? projectsData.map((project) => project.provider_id).filter(Boolean) : [])
 
-          {projects?.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-slate-500 mb-4">You haven't posted any projects yet.</p>
-              <Link href="/projects/new" className="btn-primary">
-                Post Your First Project
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {openProjects.length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-lg mb-3 flex items-center">
-                    <Clock className="h-5 w-5 text-indigo-500 mr-2" />
-                    Open Projects
-                  </h3>
-                  <div className="space-y-4">
-                    {openProjects.map((project) => (
-                      <ProjectCard key={project.id} project={project} />
-                    ))}
-                  </div>
-                </div>
-              )}
+        if (providersError) {
+          console.error("Error fetching providers:", providersError)
+        } else {
+          setProviders(providersData || [])
+        }
 
-              {inProgressProjects.length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-lg mb-3 flex items-center">
-                    <CheckCircle className="h-5 w-5 text-teal-500 mr-2" />
-                    In Progress
-                  </h3>
-                  <div className="space-y-4">
-                    {inProgressProjects.map((project) => (
-                      <ProjectCard key={project.id} project={project} />
-                    ))}
-                  </div>
-                </div>
-              )}
+        // Determine if we should show sample data
+        const shouldShowSample =
+          (!projectsData || projectsData.length === 0) &&
+          (!messagesData || messagesData.length === 0) &&
+          (!providersData || providersData.length === 0)
 
-              {completedProjects.length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-lg mb-3 flex items-center">
-                    <XCircle className="h-5 w-5 text-slate-500 mr-2" />
-                    Completed
-                  </h3>
-                  <div className="space-y-4">
-                    {completedProjects.map((project) => (
-                      <ProjectCard key={project.id} project={project} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
+        setShowSampleData(shouldShowSample)
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
 
-function ProjectCard({ project }) {
-  const statusColors = {
-    open: "bg-indigo-100 text-indigo-800",
-    in_progress: "bg-teal-100 text-teal-800",
-    completed: "bg-slate-100 text-slate-800",
-    cancelled: "bg-red-100 text-red-800",
+    if (userId) {
+      fetchData()
+    }
+  }, [userId, supabase])
+
+  const removeSampleItem = (type, id) => {
+    if (type === "project") {
+      setProjects(projects.filter((p) => p.id !== id))
+    } else if (type === "message") {
+      setMessages(messages.filter((m) => m.id !== id))
+    } else if (type === "provider") {
+      setProviders(providers.filter((p) => p.id !== id))
+    }
   }
 
+  const displayProjects = projects.length > 0 ? projects : showSampleData ? sampleProjects : []
+  const displayMessages = messages.length > 0 ? messages : showSampleData ? sampleMessages : []
+  const displayProviders = providers.length > 0 ? providers : showSampleData ? sampleProviders : []
+
   return (
-    <div className="border border-slate-200 rounded-lg p-4 hover:border-teal-200 transition-colors">
-      <div className="flex justify-between items-start">
-        <div>
-          <h4 className="font-semibold text-lg">{project.title}</h4>
-          <div className="flex items-center mt-1 space-x-2">
-            {project.category && (
-              <span className="badge bg-slate-100 text-slate-700">
-                {project.category.icon} {project.category.name}
-              </span>
-            )}
-            <span className={`badge ${statusColors[project.status]}`}>
-              {project.status.replace("_", " ").charAt(0).toUpperCase() + project.status.replace("_", " ").slice(1)}
-            </span>
+    <div className="space-y-6">
+      {showSampleData && (
+        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+          <div className="flex">
+            <div className="ml-3">
+              <p className="text-sm text-blue-700">
+                Welcome to your dashboard! We've added some sample data to help you get started. You can remove these
+                samples by clicking the trash icon, or they'll be replaced automatically when you create real projects.
+              </p>
+            </div>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-teal-600 font-semibold">${project.budget}</div>
-          <div className="text-xs text-slate-500">Posted on {new Date(project.created_at).toLocaleDateString()}</div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-teal-100 text-teal-600">
+              <Briefcase className="h-6 w-6" />
+            </div>
+            <div className="ml-4">
+              <h3 className="text-lg font-medium text-gray-900">Projects</h3>
+              <p className="text-2xl font-semibold text-gray-700">{projects.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-indigo-100 text-indigo-600">
+              <MessageSquare className="h-6 w-6" />
+            </div>
+            <div className="ml-4">
+              <h3 className="text-lg font-medium text-gray-900">Messages</h3>
+              <p className="text-2xl font-semibold text-gray-700">{messages.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-amber-100 text-amber-600">
+              <Star className="h-6 w-6" />
+            </div>
+            <div className="ml-4">
+              <h3 className="text-lg font-medium text-gray-900">Reviews</h3>
+              <p className="text-2xl font-semibold text-gray-700">0</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center">
+            <div className="p-3 rounded-full bg-purple-100 text-purple-600">
+              <Users className="h-6 w-6" />
+            </div>
+            <div className="ml-4">
+              <h3 className="text-lg font-medium text-gray-900">Providers</h3>
+              <p className="text-2xl font-semibold text-gray-700">{providers.length}</p>
+            </div>
+          </div>
         </div>
       </div>
 
-      {project.description && <p className="text-sm text-slate-600 mt-2 line-clamp-2">{project.description}</p>}
-
-      <div className="mt-4 flex justify-between items-center">
-        <div>
-          <span className="text-sm text-slate-600">
-            {project.bids?.length || 0} bid{project.bids?.length !== 1 ? "s" : ""}
-          </span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h3 className="text-lg font-medium text-gray-900">Recent Projects</h3>
+            <Link href="/projects" className="text-sm text-teal-600 hover:text-teal-800 flex items-center">
+              View all <ArrowRight className="ml-1 h-4 w-4" />
+            </Link>
+          </div>
+          <div className="p-6">
+            {loading ? (
+              <div className="animate-pulse space-y-4">
+                <div className="h-12 bg-gray-200 rounded"></div>
+                <div className="h-12 bg-gray-200 rounded"></div>
+              </div>
+            ) : displayProjects.length > 0 ? (
+              <ul className="divide-y divide-gray-200">
+                {displayProjects.slice(0, 3).map((project) => (
+                  <li key={project.id} className="py-3 flex justify-between items-center">
+                    <div>
+                      <Link
+                        href={project.isSample ? "#" : `/projects/${project.id}`}
+                        className="text-base font-medium text-gray-900 hover:text-teal-600"
+                      >
+                        {project.title}
+                      </Link>
+                      <p className="text-sm text-gray-500">{project.category}</p>
+                      <div className="mt-1">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            project.status === "open"
+                              ? "bg-green-100 text-green-800"
+                              : project.status === "in_progress"
+                                ? "bg-blue-100 text-blue-800"
+                                : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {project.status === "open"
+                            ? "Open"
+                            : project.status === "in_progress"
+                              ? "In Progress"
+                              : project.status}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center">
+                      {project.isSample && (
+                        <button
+                          onClick={() => removeSampleItem("project", project.id)}
+                          className="text-gray-400 hover:text-red-500"
+                          title="Remove sample"
+                        >
+                          <Trash className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-gray-500">No projects yet</p>
+                <Link
+                  href="/projects/new"
+                  className="mt-2 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-teal-600 hover:bg-teal-700"
+                >
+                  Create a Project
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
-        <Link href={`/projects/${project.id}`} className="text-teal-600 hover:text-teal-700 text-sm font-medium">
-          View Details
-        </Link>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h3 className="text-lg font-medium text-gray-900">Recent Messages</h3>
+            <Link href="/chat" className="text-sm text-teal-600 hover:text-teal-800 flex items-center">
+              View all <ArrowRight className="ml-1 h-4 w-4" />
+            </Link>
+          </div>
+          <div className="p-6">
+            {loading ? (
+              <div className="animate-pulse space-y-4">
+                <div className="h-12 bg-gray-200 rounded"></div>
+                <div className="h-12 bg-gray-200 rounded"></div>
+              </div>
+            ) : displayMessages.length > 0 ? (
+              <ul className="divide-y divide-gray-200">
+                {displayMessages.slice(0, 3).map((message) => (
+                  <li key={message.id} className="py-3 flex justify-between">
+                    <div>
+                      <p className="text-base font-medium text-gray-900">{message.sender_name || "Unknown User"}</p>
+                      <p className="text-sm text-gray-500 truncate max-w-xs">{message.content}</p>
+                      <p className="text-xs text-gray-400 mt-1">{new Date(message.created_at).toLocaleDateString()}</p>
+                    </div>
+                    <div className="flex items-center">
+                      {message.isSample && (
+                        <button
+                          onClick={() => removeSampleItem("message", message.id)}
+                          className="text-gray-400 hover:text-red-500"
+                          title="Remove sample"
+                        >
+                          <Trash className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-gray-500">No messages yet</p>
+                <Link
+                  href="/chat/new"
+                  className="mt-2 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-teal-600 hover:bg-teal-700"
+                >
+                  Start a Conversation
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
