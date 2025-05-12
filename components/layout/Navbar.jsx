@@ -1,16 +1,19 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useSupabase } from "@/lib/supabase-provider"
-import { Menu, X, User, LogOut } from "lucide-react"
+import { Menu, X, User, LogOut, ChevronDown, Settings, Briefcase, LayoutDashboard } from "lucide-react"
 
 export default function Navbar() {
   const { user, userDetails, supabase, loading, error, authChangeComplete } = useSupabase()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [localLoading, setLocalLoading] = useState(true)
   const pathname = usePathname()
+  const router = useRouter()
+  const userMenuRef = useRef(null)
 
   useEffect(() => {
     // Only set localLoading to false when authChangeComplete is true
@@ -19,14 +22,33 @@ export default function Navbar() {
     }
   }, [authChangeComplete])
 
+  useEffect(() => {
+    // Close the user menu when clicking outside
+    function handleClickOutside(event) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setIsUserMenuOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [])
+
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen)
+  }
+
+  const toggleUserMenu = () => {
+    setIsUserMenuOpen(!isUserMenuOpen)
   }
 
   const handleSignOut = async () => {
     try {
       setLocalLoading(true)
       await supabase.auth.signOut()
+      router.refresh()
       // The auth state change listener will handle updating the UI
     } catch (error) {
       console.error("Error signing out:", error)
@@ -36,6 +58,16 @@ export default function Navbar() {
 
   const isActive = (path) => {
     return pathname === path ? "text-teal-600" : "text-slate-700 hover:text-teal-600"
+  }
+
+  const getUserName = () => {
+    if (userDetails?.full_name) {
+      return userDetails.full_name
+    }
+    if (user?.user_metadata?.full_name) {
+      return user.user_metadata.full_name
+    }
+    return user?.email?.split("@")[0] || "User"
   }
 
   return (
@@ -54,9 +86,7 @@ export default function Navbar() {
             <Link href="/browse" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive("/browse")}`}>
               Find Help
             </Link>
-            <Link href="/projects" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive("/projects")}`}>
-              Projects
-            </Link>
+
             {localLoading ? (
               <div className="flex items-center space-x-3">
                 <div className="h-8 w-24 bg-slate-200 animate-pulse rounded-md"></div>
@@ -64,33 +94,76 @@ export default function Navbar() {
               </div>
             ) : user ? (
               <>
-                <Link
-                  href="/dashboard"
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${isActive("/dashboard")}`}
-                >
-                  Dashboard
-                </Link>
-                <Link href="/chat" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive("/chat")}`}>
-                  Messages
-                </Link>
-                <div className="relative ml-3">
-                  <div className="flex items-center space-x-3">
-                    <button
-                      onClick={handleSignOut}
-                      className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500"
-                    >
-                      <LogOut className="h-4 w-4 mr-1" />
-                      Sign out
-                    </button>
-                    <Link
-                      href={user ? `/profile/${user.id.substring(0, 8)}` : "/profile"}
-                      className="flex items-center"
-                    >
-                      <div className="h-8 w-8 rounded-full bg-teal-500 flex items-center justify-center text-white">
-                        <User className="h-5 w-5" />
-                      </div>
-                    </Link>
-                  </div>
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    onClick={toggleUserMenu}
+                    className="flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-teal-600 hover:bg-slate-50"
+                  >
+                    <div className="h-8 w-8 rounded-full bg-teal-500 flex items-center justify-center text-white">
+                      <User className="h-5 w-5" />
+                    </div>
+                    <span>{getUserName()}</span>
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+
+                  {isUserMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10 ring-1 ring-black ring-opacity-5">
+                      <Link
+                        href="/dashboard"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        <LayoutDashboard className="h-4 w-4 mr-2" />
+                        Dashboard
+                      </Link>
+                      <Link
+                        href="/projects"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        <Briefcase className="h-4 w-4 mr-2" />
+                        Projects
+                      </Link>
+                      <Link
+                        href="/chat"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4 mr-2"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                        Messages
+                      </Link>
+                      <Link
+                        href={`/profile/${user.id.substring(0, 8)}`}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        <Settings className="h-4 w-4 mr-2" />
+                        Profile Settings
+                      </Link>
+                      <div className="border-t border-gray-100 my-1"></div>
+                      <button
+                        onClick={() => {
+                          handleSignOut()
+                          setIsUserMenuOpen(false)
+                        }}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                      >
+                        <LogOut className="h-4 w-4 mr-2" />
+                        Sign out
+                      </button>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -136,13 +209,7 @@ export default function Navbar() {
             >
               Find Help
             </Link>
-            <Link
-              href="/projects"
-              className={`block px-3 py-2 rounded-md text-base font-medium ${isActive("/projects")}`}
-              onClick={toggleMenu}
-            >
-              Projects
-            </Link>
+
             {localLoading ? (
               <div className="px-3 py-2">
                 <div className="h-8 w-24 bg-slate-200 animate-pulse rounded-md"></div>
@@ -154,13 +221,34 @@ export default function Navbar() {
                   className={`block px-3 py-2 rounded-md text-base font-medium ${isActive("/dashboard")}`}
                   onClick={toggleMenu}
                 >
+                  <LayoutDashboard className="h-4 w-4 inline mr-2" />
                   Dashboard
+                </Link>
+                <Link
+                  href="/projects"
+                  className={`block px-3 py-2 rounded-md text-base font-medium ${isActive("/projects")}`}
+                  onClick={toggleMenu}
+                >
+                  <Briefcase className="h-4 w-4 inline mr-2" />
+                  Projects
                 </Link>
                 <Link
                   href="/chat"
                   className={`block px-3 py-2 rounded-md text-base font-medium ${isActive("/chat")}`}
                   onClick={toggleMenu}
                 >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4 inline mr-2"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                  </svg>
                   Messages
                 </Link>
                 <Link
@@ -168,7 +256,8 @@ export default function Navbar() {
                   className={`block px-3 py-2 rounded-md text-base font-medium ${isActive("/profile")}`}
                   onClick={toggleMenu}
                 >
-                  Profile
+                  <Settings className="h-4 w-4 inline mr-2" />
+                  Profile Settings
                 </Link>
                 <button
                   onClick={() => {
@@ -177,6 +266,7 @@ export default function Navbar() {
                   }}
                   className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:text-teal-600 hover:bg-slate-100"
                 >
+                  <LogOut className="h-4 w-4 inline mr-2" />
                   Sign out
                 </button>
               </>

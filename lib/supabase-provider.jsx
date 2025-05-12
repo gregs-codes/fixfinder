@@ -14,6 +14,25 @@ export function SupabaseProvider({ children }) {
   const [error, setError] = useState(null)
   const [authChangeComplete, setAuthChangeComplete] = useState(false)
 
+  const fetchUserProfile = async (userId) => {
+    try {
+      // Use proper headers and format for the request
+      const { data, error: profileError } = await supabase.from("users").select("*").eq("id", userId).single()
+
+      if (profileError) {
+        console.error("Error fetching user profile:", profileError)
+        setError(profileError)
+        return null
+      }
+
+      return data
+    } catch (err) {
+      console.error("Error in profile fetch:", err)
+      setError(err)
+      return null
+    }
+  }
+
   useEffect(() => {
     const getUser = async () => {
       try {
@@ -34,23 +53,8 @@ export function SupabaseProvider({ children }) {
         setUser(session?.user || null)
 
         if (session?.user) {
-          try {
-            const { data, error: profileError } = await supabase
-              .from("users")
-              .select("*")
-              .eq("id", session.user.id)
-              .single()
-
-            if (profileError) {
-              console.error("Error fetching user profile:", profileError)
-              setError(profileError)
-            } else {
-              setUserDetails(data || null)
-            }
-          } catch (err) {
-            console.error("Error in profile fetch:", err)
-            setError(err)
-          }
+          const profileData = await fetchUserProfile(session.user.id)
+          setUserDetails(profileData)
         }
 
         setLoading(false)
@@ -73,23 +77,8 @@ export function SupabaseProvider({ children }) {
         setUser(session?.user || null)
 
         if (session?.user) {
-          try {
-            const { data, error: profileError } = await supabase
-              .from("users")
-              .select("*")
-              .eq("id", session.user.id)
-              .single()
-
-            if (profileError) {
-              console.error("Error fetching user profile on auth change:", profileError)
-              setError(profileError)
-            } else {
-              setUserDetails(data || null)
-            }
-          } catch (err) {
-            console.error("Error in profile fetch on auth change:", err)
-            setError(err)
-          }
+          const profileData = await fetchUserProfile(session.user.id)
+          setUserDetails(profileData)
         } else {
           setUserDetails(null)
         }
