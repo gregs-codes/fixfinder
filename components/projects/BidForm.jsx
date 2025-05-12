@@ -3,10 +3,12 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/toast-provider"
+import { useBids } from "@/hooks/use-bids"
 
-export default function BidForm({ projectId, userId, onSubmit, isSubmitting }) {
+export default function BidForm({ projectId, userId }) {
   const router = useRouter()
   const { addToast } = useToast()
+  const { addBid, isAddingBid } = useBids()
 
   const [bidAmount, setBidAmount] = useState("")
   const [message, setMessage] = useState("")
@@ -20,18 +22,27 @@ export default function BidForm({ projectId, userId, onSubmit, isSubmitting }) {
     }
 
     try {
-      await onSubmit({
-        bid_amount: Number.parseFloat(bidAmount),
-        message,
-        status: "pending",
-      })
-
-      addToast("Bid submitted successfully!", "success")
-      router.refresh()
-
-      // Reset form
-      setBidAmount("")
-      setMessage("")
+      // Use the addBid mutation with optimistic updates
+      addBid(
+        {
+          project_id: projectId,
+          provider_id: userId,
+          bid_amount: Number.parseFloat(bidAmount),
+          message,
+          status: "pending",
+        },
+        {
+          onSuccess: () => {
+            addToast("Bid submitted successfully!", "success")
+            // Reset form
+            setBidAmount("")
+            setMessage("")
+          },
+          onError: (error) => {
+            addToast(error.message || "Failed to submit bid", "error")
+          },
+        },
+      )
     } catch (error) {
       addToast(error.message || "Failed to submit bid", "error")
     }
@@ -75,8 +86,8 @@ export default function BidForm({ projectId, userId, onSubmit, isSubmitting }) {
             />
           </div>
 
-          <button type="submit" className="btn-primary w-full" disabled={isSubmitting}>
-            {isSubmitting ? "Submitting..." : "Submit Bid"}
+          <button type="submit" className="btn-primary w-full" disabled={isAddingBid}>
+            {isAddingBid ? "Submitting..." : "Submit Bid"}
           </button>
         </form>
       </div>

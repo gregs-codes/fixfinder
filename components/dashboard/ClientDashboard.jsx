@@ -4,14 +4,95 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useSupabase } from "@/lib/supabase-provider"
 import { Briefcase, MessageSquare, Star, Users, ArrowRight, Trash } from "lucide-react"
+import { useProjects } from "@/hooks/use-projects"
+import { useQuery } from "@tanstack/react-query"
+import { getSupabaseClient } from "@/lib/supabase-singleton"
+
+// Custom hook for fetching messages
+function useMessages(userId) {
+  return useQuery({
+    queryKey: ["messages", userId],
+    queryFn: async () => {
+      if (!userId) return []
+
+      const supabase = getSupabaseClient()
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+        .order("created_at", { ascending: false })
+        .limit(5)
+
+      if (error) throw error
+      return data || []
+    },
+    enabled: !!userId,
+  })
+}
 
 export default function ClientDashboard({ userId }) {
   const { supabase } = useSupabase()
+  const [showSampleData, setShowSampleData] = useState(false)
   const [projects, setProjects] = useState([])
   const [messages, setMessages] = useState([])
   const [providers, setProviders] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showSampleData, setShowSampleData] = useState(false)
+
+  // Fetch projects using React Query
+  const { data: fetchedProjects, isLoading: projectsLoading, isError: projectsError } = useProjects(userId)
+
+  // Fetch messages using React Query
+  const { data: fetchedMessages = [], isLoading: messagesLoading, isError: messagesError } = useMessages(userId)
+
+  // Fetch providers the client has worked with
+  const { data: fetchedProviders = [], isLoading: providersLoading } = useQuery({
+    queryKey: ["client-providers", userId],
+    queryFn: async () => {
+      if (!userId) return []
+
+      // Get provider IDs from projects
+      const providerIds = fetchedProjects?.map((project) => project.provider_id).filter(Boolean) || []
+
+      if (providerIds.length === 0) return []
+
+      const supabase = getSupabaseClient()
+      const { data, error } = await supabase.from("users").select("*").eq("is_provider", true).in("id", providerIds)
+
+      if (error) throw error
+      return data || []
+    },
+    enabled: !!userId && !projectsLoading && fetchedProjects?.length > 0,
+  })
+
+  useEffect(() => {
+    if (fetchedProjects) {
+      setProjects(fetchedProjects)
+    }
+  }, [fetchedProjects])
+
+  useEffect(() => {
+    if (fetchedMessages) {
+      setMessages(fetchedMessages)
+    }
+  }, [fetchedMessages])
+
+  useEffect(() => {
+    if (fetchedProviders) {
+      setProviders(fetchedProviders)
+    }
+  }, [fetchedProviders])
+
+  // Determine if we should show sample data
+  useEffect(() => {
+    const shouldShowSample =
+      !projectsLoading &&
+      projects.length === 0 &&
+      !messagesLoading &&
+      messages.length === 0 &&
+      !providersLoading &&
+      providers.length === 0
+
+    setShowSampleData(shouldShowSample)
+  }, [projects, messages, providers, projectsLoading, messagesLoading, providersLoading])
 
   // Sample data for empty states
   const sampleProjects = [
@@ -72,69 +153,6 @@ export default function ClientDashboard({ userId }) {
     },
   ]
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      try {
-        // Fetch projects
-        const { data: projectsData, error: projectsError } = await supabase
-          .from("projects")
-          .select("*")
-          .eq("client_id", userId)
-          .order("created_at", { ascending: false })
-
-        if (projectsError) {
-          console.error("Error fetching projects:", projectsError)
-        } else {
-          setProjects(projectsData || [])
-        }
-
-        // Fetch messages (most recent conversations)
-        const { data: messagesData, error: messagesError } = await supabase
-          .from("messages")
-          .select("*")
-          .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
-          .order("created_at", { ascending: false })
-          .limit(5)
-
-        if (messagesError) {
-          console.error("Error fetching messages:", messagesError)
-        } else {
-          setMessages(messagesData || [])
-        }
-
-        // Fetch providers the client has worked with
-        const { data: providersData, error: providersError } = await supabase
-          .from("users")
-          .select("*")
-          .eq("is_provider", true)
-          .in("id", projectsData ? projectsData.map((project) => project.provider_id).filter(Boolean) : [])
-
-        if (providersError) {
-          console.error("Error fetching providers:", providersError)
-        } else {
-          setProviders(providersData || [])
-        }
-
-        // Determine if we should show sample data
-        const shouldShowSample =
-          (!projectsData || projectsData.length === 0) &&
-          (!messagesData || messagesData.length === 0) &&
-          (!providersData || providersData.length === 0)
-
-        setShowSampleData(shouldShowSample)
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    if (userId) {
-      fetchData()
-    }
-  }, [userId, supabase])
-
   const removeSampleItem = (type, id) => {
     if (type === "project") {
       setProjects(projects.filter((p) => p.id !== id))
@@ -145,6 +163,7 @@ export default function ClientDashboard({ userId }) {
     }
   }
 
+  const isLoading = projectsLoading || messagesLoading || providersLoading
   const displayProjects = projects.length > 0 ? projects : showSampleData ? sampleProjects : []
   const displayMessages = messages.length > 0 ? messages : showSampleData ? sampleMessages : []
   const displayProviders = providers.length > 0 ? providers : showSampleData ? sampleProviders : []
@@ -223,7 +242,7 @@ export default function ClientDashboard({ userId }) {
             </Link>
           </div>
           <div className="p-6">
-            {loading ? (
+            {isLoading ? (
               <div className="animate-pulse space-y-4">
                 <div className="h-12 bg-gray-200 rounded"></div>
                 <div className="h-12 bg-gray-200 rounded"></div>
@@ -239,7 +258,7 @@ export default function ClientDashboard({ userId }) {
                       >
                         {project.title}
                       </Link>
-                      <p className="text-sm text-gray-500">{project.category}</p>
+                      <p className="text-sm text-gray-500">{project.category?.name || project.category}</p>
                       <div className="mt-1">
                         <span
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -294,7 +313,7 @@ export default function ClientDashboard({ userId }) {
             </Link>
           </div>
           <div className="p-6">
-            {loading ? (
+            {isLoading ? (
               <div className="animate-pulse space-y-4">
                 <div className="h-12 bg-gray-200 rounded"></div>
                 <div className="h-12 bg-gray-200 rounded"></div>

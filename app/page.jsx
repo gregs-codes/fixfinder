@@ -1,8 +1,8 @@
 import Link from "next/link"
-import { createServerSupabase } from "@/lib/supabase-server"
-import CategoryCard from "@/components/home/CategoryCard"
 import HowItWorks from "@/components/home/HowItWorks"
 import TestimonialSection from "@/components/home/TestimonialSection"
+import { createServerSupabase } from "@/lib/supabase-server"
+import CategoryCard from "@/components/home/CategoryCard"
 
 export const dynamic = "force-dynamic"
 
